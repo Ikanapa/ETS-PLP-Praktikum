@@ -107,8 +107,14 @@ class Lexer:
                 self._advance()
             return
         if ch == "/" and self._peek() == "*":
-            # TODO(T3): dukung komentar blok /* ... */ (SPESIFIKASI.md bagian 2.3).
-            raise LexError("komentar blok belum didukung", line, col)
+            self._advance()  # lewati '*'
+            while not self._at_end():
+                if self._peek() == "*" and self._peek(1) == "/":
+                    self._advance()  # lewati '*'
+                    self._advance()  # lewati '/'
+                    return
+                self._advance()
+            raise LexError("komentar blok tidak ditutup", line, col)
         if ch in _SINGLE:
             self._add(_SINGLE[ch], ch, line, col)
             return
@@ -116,8 +122,12 @@ class Lexer:
             self._add(TokenType.OP, ch, line, col)
             return
         if ch == "<":
-            op = "<=" if self._match("=") else "<"
-            self._add(TokenType.OP, op, line, col)
+            if self._match(">"):
+                self._add(TokenType.OP, "<>", line, col)
+            elif self._match("="):
+                self._add(TokenType.OP, "<=", line, col)
+            else:
+                self._add(TokenType.OP, "<", line, col)
             return
         if ch == ">":
             op = ">=" if self._match("=") else ">"
@@ -157,8 +167,13 @@ class Lexer:
                 raise LexError("string tidak ditutup", line, col)
             ch = self._advance()
             if ch == "'":
-                break
-            chars.append(ch)
+                if self._peek() == "'":
+                    self._advance()
+                    chars.append("'")
+                else:
+                    break
+            else:
+                chars.append(ch)
         self._add(TokenType.STRING, "".join(chars), line, col)
 
     def _number(self, line: int, col: int) -> None:
@@ -176,8 +191,9 @@ class Lexer:
         while self._peek().isalnum() or self._peek() == "_":
             self._advance()
         text = self.src[start:self.pos]
-        if text in KEYWORDS:
-            self._add(TokenType.KEYWORD, text, line, col)
+        text_upper = text.upper()
+        if text_upper in KEYWORDS:
+            self._add(TokenType.KEYWORD, text_upper, line, col)
         else:
             self._add(TokenType.IDENT, text, line, col)
 

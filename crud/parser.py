@@ -88,10 +88,11 @@ class Parser:
         return ast.Script(statements, errors)
 
     def _synchronize(self) -> None:
-        # Panic mode (Crafting Interpreters bab 6): buang token sampai
-        # titik aman, lalu lanjutkan parsing.
+        # Panic mode: buang token sampai ';' di akhir statement
         while not self._at_end():
-            self._advance()
+            tok = self._advance()
+            if tok.type == T.SEMICOLON:
+                break
 
     def _statement(self):
         if self._check_kw("SELECT"):
@@ -210,8 +211,8 @@ class Parser:
                 rows.append(self._value_row())
             return ast.Insert(table, columns, rows, None, line=start.line)
         if self._check_kw("SELECT"):
-            # TODO(T1): dukung INSERT INTO ... SELECT ... (SPESIFIKASI.md bagian 3 dan 5).
-            raise ParseError("INSERT ... SELECT belum didukung", self._peek())
+            select_stmt = self._select()
+            return ast.Insert(table, columns, [], select_stmt, line=start.line)
         raise ParseError("diharapkan VALUES atau SELECT", self._peek())
 
     def _value_row(self) -> list:
@@ -246,14 +247,18 @@ class Parser:
 
     # ---- ekspresi (dari presedensi terendah ke tertinggi) ---------------
     def _expr(self):
-        return self._logical()
+        return self._or()
 
-    def _logical(self):
-        # OR dan AND: operator logika biner, asosiatif kiri.
+    def _or(self):
+        left = self._and()
+        while self._match_kw("OR"):
+            left = ast.BinaryOp(left, "OR", self._and())
+        return left
+
+    def _and(self):
         left = self._not()
-        while self._check_kw("AND", "OR"):
-            op = self._advance().value
-            left = ast.BinaryOp(left, op, self._not())
+        while self._match_kw("AND"):
+            left = ast.BinaryOp(left, "AND", self._not())
         return left
 
     def _not(self):
